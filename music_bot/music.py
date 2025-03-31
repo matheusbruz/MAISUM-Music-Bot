@@ -40,14 +40,6 @@ FFMPEG_OPTIONS = {
     'executable': FFMPEG_PATH  # Define o executável do FFmpeg
 }
 
-# Inicializar cliente Spotify se as credenciais existirem
-spotify_client = None
-if SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET:
-    spotify_client = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials(
-        client_id=SPOTIFY_CLIENT_ID,
-        client_secret=SPOTIFY_CLIENT_SECRET
-    ))
-
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -61,10 +53,6 @@ class Music(commands.Cog):
         youtube_regex = r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'
         return re.match(youtube_regex, url) is not None
 
-    def is_spotify_url(self, url):
-        spotify_regex = r'(https?://)?open\.spotify\.com/(track|album|playlist)/([a-zA-Z0-9]+)'
-        return re.match(spotify_regex, url) is not None
-
     async def get_youtube_info(self, url):
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -77,44 +65,6 @@ class Music(commands.Cog):
                 'duration': info.get('duration'),
                 'original_url': url
             }
-
-    async def process_spotify_url(self, url):
-        if not spotify_client:
-            return None  # Retorna None se o cliente Spotify não estiver configurado
-        
-        track_list = []
-        match = re.match(r'(https?://)?open\.spotify\.com/(track|album|playlist)/([a-zA-Z0-9]+)', url)
-        if not match:
-            return None  # Retorna None se o link não for válido
-        
-        item_type = match.group(2)
-        item_id = match.group(3)
-        
-        try:
-            if item_type == 'track':
-                track = spotify_client.track(item_id)
-                search_query = f"{track['name']} {' '.join([artist['name'] for artist in track['artists']])}"
-                track_list.append(search_query)
-            
-            elif item_type == 'album':
-                album = spotify_client.album(item_id)
-                for track in album['tracks']['items']:
-                    search_query = f"{track['name']} {' '.join([artist['name'] for artist in track['artists']])}"
-                    track_list.append(search_query)
-            
-            elif item_type == 'playlist':
-                playlist = spotify_client.playlist(item_id)
-                for item in playlist['tracks']['items']:
-                    track = item.get('track')
-                    if track:  # Verifica se a faixa existe
-                        search_query = f"{track['name']} {' '.join([artist['name'] for artist in track['artists']])}"
-                        track_list.append(search_query)
-            
-            return track_list if track_list else None  # Retorna None se a lista estiver vazia
-
-        except spotipy.exceptions.SpotifyException as e:
-            print(f"Erro ao processar link do Spotify: {e}")
-            return None
 
     async def play_next(self, guild_id):
         if guild_id in self.music_queues and self.music_queues[guild_id]:
@@ -210,28 +160,6 @@ class Music(commands.Cog):
                 song_info = await self.get_youtube_info(link)
                 self.music_queues[guild_id].append(song_info)
                 await processing_msg.edit(content=f"Adicionado à fila: {song_info['title']}")
-            
-            elif self.is_spotify_url(link):
-                # Link do Spotify
-                track_list = await self.process_spotify_url(link)
-                if not track_list:
-                    return await processing_msg.edit(content="Não foi possível processar este link do Spotify. Verifique se o link é válido e se as credenciais estão configuradas corretamente.")
-                
-                if len(track_list) > 1:
-                    await processing_msg.edit(content=f"Adicionando {len(track_list)} músicas da playlist/álbum à fila...")
-                
-                for i, track_query in enumerate(track_list):
-                    try:
-                        song_info = await self.get_youtube_info(f"ytsearch:{track_query}")
-                        self.music_queues[guild_id].append(song_info)
-                        
-                        if i == 0 and len(track_list) == 1:
-                            await processing_msg.edit(content=f"Adicionado à fila: {song_info['title']}")
-                    except Exception as e:
-                        print(f"Erro ao processar faixa {i+1} ({track_query}): {e}")
-                
-                if len(track_list) > 1:
-                    await processing_msg.edit(content=f"Adicionadas {len(track_list)} músicas à fila!")
             
             else:
                 # Tratar como uma pesquisa no YouTube
