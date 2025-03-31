@@ -32,9 +32,12 @@ YDL_OPTIONS = {
     'source_address': '0.0.0.0',
 }
 
+# Atualize as opções do FFmpeg para usar o caminho fornecido
+FFMPEG_PATH = r"C:\Users\BRUZACA\Desktop\workspace python\MAISUM-Music-Bot\bin\ffmpeg.exe"  # Caminho para o executável FFmpeg
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
     'options': '-vn',
+    'executable': FFMPEG_PATH  # Define o executável do FFmpeg
 }
 
 # Inicializar cliente Spotify se as credenciais existirem
@@ -77,35 +80,41 @@ class Music(commands.Cog):
 
     async def process_spotify_url(self, url):
         if not spotify_client:
-            return None
+            return None  # Retorna None se o cliente Spotify não estiver configurado
         
         track_list = []
         match = re.match(r'(https?://)?open\.spotify\.com/(track|album|playlist)/([a-zA-Z0-9]+)', url)
         if not match:
-            return None
+            return None  # Retorna None se o link não for válido
         
         item_type = match.group(2)
         item_id = match.group(3)
         
-        if item_type == 'track':
-            track = spotify_client.track(item_id)
-            search_query = f"{track['name']} {' '.join([artist['name'] for artist in track['artists']])}"
-            track_list.append(search_query)
-        
-        elif item_type == 'album':
-            album = spotify_client.album(item_id)
-            for track in album['tracks']['items']:
+        try:
+            if item_type == 'track':
+                track = spotify_client.track(item_id)
                 search_query = f"{track['name']} {' '.join([artist['name'] for artist in track['artists']])}"
                 track_list.append(search_query)
-        
-        elif item_type == 'playlist':
-            playlist = spotify_client.playlist(item_id)
-            for item in playlist['tracks']['items']:
-                track = item['track']
-                search_query = f"{track['name']} {' '.join([artist['name'] for artist in track['artists']])}"
-                track_list.append(search_query)
-        
-        return track_list
+            
+            elif item_type == 'album':
+                album = spotify_client.album(item_id)
+                for track in album['tracks']['items']:
+                    search_query = f"{track['name']} {' '.join([artist['name'] for artist in track['artists']])}"
+                    track_list.append(search_query)
+            
+            elif item_type == 'playlist':
+                playlist = spotify_client.playlist(item_id)
+                for item in playlist['tracks']['items']:
+                    track = item.get('track')
+                    if track:  # Verifica se a faixa existe
+                        search_query = f"{track['name']} {' '.join([artist['name'] for artist in track['artists']])}"
+                        track_list.append(search_query)
+            
+            return track_list if track_list else None  # Retorna None se a lista estiver vazia
+
+        except spotipy.exceptions.SpotifyException as e:
+            print(f"Erro ao processar link do Spotify: {e}")
+            return None
 
     async def play_next(self, guild_id):
         if guild_id in self.music_queues and self.music_queues[guild_id]:
@@ -206,7 +215,7 @@ class Music(commands.Cog):
                 # Link do Spotify
                 track_list = await self.process_spotify_url(link)
                 if not track_list:
-                    return await processing_msg.edit(content="Não foi possível processar este link do Spotify. Verifique suas credenciais.")
+                    return await processing_msg.edit(content="Não foi possível processar este link do Spotify. Verifique se o link é válido e se as credenciais estão configuradas corretamente.")
                 
                 if len(track_list) > 1:
                     await processing_msg.edit(content=f"Adicionando {len(track_list)} músicas da playlist/álbum à fila...")
